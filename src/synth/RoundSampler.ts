@@ -17,6 +17,60 @@ export interface GrainRealtimeParams {
     playbackRate: number;
 }
 
+
+class SampleSource {
+    private audioContext: AudioContext;
+    sampleBuffer?: AudioBuffer;
+    isLoaded: boolean = false;
+    isLoading: boolean = false;
+
+    load = async () => {
+        console.error("samplesource constructed wrong");
+    };
+
+    constructor(audioContext: AudioContext, sampleDefinition: SampleFileDefinition) {
+        this.audioContext = audioContext;
+
+        this.load = async () => {
+            console.groupCollapsed("header: " + sampleDefinition.name);
+            console.log("load", sampleDefinition.name, sampleDefinition.path);
+            if (this.isLoaded || this.isLoading) throw new Error("redundant load call");
+            this.isLoading = true;
+            // const fetchHeaders = new Headers();
+            const response = await fetch(sampleDefinition.path, {
+                cache: "default",
+            })
+            response.headers.forEach((value, key) => {
+                if (key.match('date')) {
+                    console.log("loaded:", (Date.now() - Date.parse(value)) / 1000 / 60, " minutes ago");
+                } else if (key.match('cache-control')) {
+                    console.log(key + ":", value);
+                }
+            });
+            console.log("ready");
+            const arrayBuffer = await response.arrayBuffer();
+            this.sampleBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+            this.isLoaded = true;
+            this.isLoading = false;
+            console.groupEnd();
+
+        }
+    }
+}
+
+
+const getProxyValueForTime = (arraySection: Float32Array, startIndex: number, endIndex: number) => {
+    let max = -Infinity;
+    let min = Infinity;
+    for (let i = startIndex; i < endIndex; i++) {
+        if (arraySection[i] > max) max = arraySection[i];
+        if (arraySection[i] < min) min = arraySection[i];
+    }
+    return -min > max ? min : max;
+}
+
+
+
 interface SoundGrain {
     output: AudioNode;
     /**
@@ -33,7 +87,6 @@ interface SoundGrain {
     destroy: () => void;
 }
 
-
 /**
  * @param audioContext - audio context
  * @param sampleBuffer - buffer of the sample to be used as a source for the sound grain
@@ -46,7 +99,7 @@ const getSoundGrain = (
     bufferSource.buffer = sampleBuffer;
     const gainNode = audioContext.createGain();
     bufferSource.connect(gainNode);
-    gainNode.gain.value = 0;
+    gainNode.gain.value = 1;
     return {
         output: gainNode,
         play(
@@ -54,18 +107,15 @@ const getSoundGrain = (
             scheduleTime: number,
             params: GrainRealtimeParams
         ) {
-
             const interval1 = params.fadeInTime;
             const interval2 = interval1 + params.sustainTime;
             const interval3 = interval2 + params.fadeOutTime;
 
-            bufferSource.playbackRate.value = params.playbackRate;
             bufferSource.start(scheduleTime, sampleStartTime, interval3);
-            gainNode.gain.setValueAtTime(0, scheduleTime);
-            gainNode.gain.linearRampToValueAtTime(1, scheduleTime + interval1);
-            gainNode.gain.linearRampToValueAtTime(1, scheduleTime + interval2);
-            gainNode.gain.linearRampToValueAtTime(0, scheduleTime + interval3);
-
+            // gainNode.gain.setValueAtTime(0, scheduleTime);
+            // gainNode.gain.linearRampToValueAtTime(1, scheduleTime + interval1);
+            // gainNode.gain.linearRampToValueAtTime(1, scheduleTime + interval2);
+            // gainNode.gain.linearRampToValueAtTime(0, scheduleTime + interval3);
             bufferSource.addEventListener('ended', this.destroy);
         },
         destroy() {
@@ -75,8 +125,8 @@ const getSoundGrain = (
             bufferSource.removeEventListener('ended', this.destroy);
         }
     };
-
 }
+
 
 /**
  * it would be possible to schedule all the grain start and end points at the start of the
@@ -137,104 +187,6 @@ class Scheduler {
 }
 
 
-class SampleSource {
-    private audioContext: AudioContext;
-    sampleBuffer?: AudioBuffer;
-    isLoaded: boolean = false;
-    isLoading: boolean = false;
-
-    load = async () => {
-        console.error("samplesource constructed wrong");
-    };
-
-    constructor(audioContext: AudioContext, sampleDefinition: SampleFileDefinition) {
-        this.audioContext = audioContext;
-
-        this.load = async () => {
-            console.groupCollapsed("header: " + sampleDefinition.name);
-            console.log("load", sampleDefinition.name, sampleDefinition.path);
-            if (this.isLoaded || this.isLoading) throw new Error("redundant load call");
-            this.isLoading = true;
-            // const fetchHeaders = new Headers();
-            const response = await fetch(sampleDefinition.path, {
-                cache: "default",
-            })
-            response.headers.forEach((value, key) => {
-                if (key.match('date')) {
-                    console.log("loaded:", (Date.now() - Date.parse(value)) / 1000 / 60, " minutes ago");
-                } else if (key.match('cache-control')) {
-                    console.log(key + ":", value);
-                }
-            });
-            console.log("ready");
-            const arrayBuffer = await response.arrayBuffer();
-            this.sampleBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
-            this.isLoaded = true;
-            this.isLoading = false;
-            console.groupEnd();
-
-        }
-    }
-}
-
-const grainScheduler = (
-    audioContext: AudioContext,
-    grainRealtimeParams: GrainRealtimeParams,
-    output: AudioNode,
-) => {
-    let latestGrainStartTime = 0;
-    let sampleSource: SampleSource | undefined;
-
-    const scheduler = new Scheduler(audioContext, (_frameStartTime, frameEndTime) => {
-        const {
-            grainsPerSecond,
-            sampleOffsetTime,
-        } = grainRealtimeParams;
-
-        const grainInterval = 1 / grainsPerSecond;
-        let iterNum = 0;
-        if (!sampleSource?.sampleBuffer) return;
-
-        for (let time = latestGrainStartTime; time < frameEndTime; time += grainInterval) {
-            const grain = getSoundGrain(
-                audioContext,
-                sampleSource.sampleBuffer
-            );
-            if (time <= latestGrainStartTime) continue;
-            latestGrainStartTime = time;
-            grain.play(
-                sampleOffsetTime,
-                latestGrainStartTime,
-                grainRealtimeParams
-            );
-
-            grain.output.connect(output);
-            iterNum++;
-        }
-    });
-
-    const setSampleSource = (_sampleSource: SampleSource) => {
-        sampleSource = _sampleSource;
-    }
-
-    return {
-        ...scheduler,
-        setSampleSource,
-    }
-
-}
-
-type GrainScheduler = ReturnType<typeof grainScheduler>;
-
-const getProxyValueForTime = (arraySection: Float32Array, startIndex: number, endIndex: number) => {
-    let max = -Infinity;
-    let min = Infinity;
-    for (let i = startIndex; i < endIndex; i++) {
-        if (arraySection[i] > max) max = arraySection[i];
-        if (arraySection[i] < min) min = arraySection[i];
-    }
-    return -min > max ? min : max;
-}
 
 export const roundSampler = (
     audioContext: AudioContext,
@@ -246,19 +198,37 @@ export const roundSampler = (
     let latestGrainStartTime = 0;
     let currentSampleSource = new SampleSource(audioContext, sampleDefinition);
     let currentSampleStartOffsetSeconds = 0;
-    let currentFragmentBuffer:AudioBuffer | undefined;
+    let currentFragmentBuffer: AudioBuffer | undefined;
     currentSampleSource.load();
 
-    const myScheduler: GrainScheduler = grainScheduler(
-        audioContext,
-        grainRealtimeParams,
-        output
-    );
+    const myScheduler = new Scheduler(audioContext, (_frameStartTime, frameEndTime) => {
+        const {
+            grainsPerSecond,
+        } = grainRealtimeParams;
 
-    const stop = () => {
-        myScheduler.stop();
-    }
+        // const grainInterval = 1 / grainsPerSecond;
+        const grainInterval = grainRealtimeParams.sustainTime;
+        
+        let iterNum = 0;
+        if (!currentFragmentBuffer) return;
+        for (let time = latestGrainStartTime; time < frameEndTime; time += grainInterval) {
+            const grain = getSoundGrain(
+                audioContext,
+                currentFragmentBuffer,
+            );
+            if (time <= latestGrainStartTime) continue;
+            latestGrainStartTime = time;
+            grain.play(
+                currentSampleStartOffsetSeconds,
+                latestGrainStartTime,
+                grainRealtimeParams
+            );
 
+            grain.output.connect(output);
+            iterNum++;
+        }
+
+    });
 
     const setSample = async (sample: SampleFileDefinition) => {
         const newSampleSource = new SampleSource(audioContext, sample);
@@ -274,9 +244,9 @@ export const roundSampler = (
 
     const updateFragmentBuffer = () => {
         const sampleBuffer = currentSampleSource.sampleBuffer;
-        if(!sampleBuffer) return new Float32Array(0);
+        if (!sampleBuffer) return new Float32Array(0);
         const sampleRate = sampleBuffer.sampleRate;
-        
+
         const {
             sampleOffsetTime,
             // to-do
@@ -297,6 +267,15 @@ export const roundSampler = (
         const newFragmentBuffer = audioContext.createBuffer(1, waveValues.length, sampleRate);
         newFragmentBuffer.copyToChannel(waveValues, 0);
         currentFragmentBuffer = newFragmentBuffer;
+
+        // currentBufferSourceNode?.stop();
+
+        // currentBufferSourceNode = audioContext.createBufferSource();
+        // currentBufferSourceNode.buffer = currentFragmentBuffer;
+        // currentBufferSourceNode.loop = true;
+        // currentBufferSourceNode.connect(output);
+        // currentBufferSourceNode.start();
+
     }
 
     const getWaveShape = (pointsCount: number): Float32Array => {
@@ -306,7 +285,7 @@ export const roundSampler = (
         const currentFragmentValues = currentFragmentBuffer.getChannelData(0);
         const fragmentDuration = currentFragmentBuffer.length;
         const step = fragmentDuration / pointsCount;
-        
+
         for (let i = 0; i < pointsCount; i++) {
             const sampleIndex = Math.floor(i * step);
             if (sampleIndex > fragmentDuration) {
@@ -336,10 +315,10 @@ export const roundSampler = (
         scheduleStart(
             absoluteStartTime: number,
         ) {
-
             if (this.inUse) throw new Error("Polyphony fail: voice already in use");
 
             this.inUse = true;
+            
 
             if (!currentSampleSource?.sampleBuffer) throw new Error("No sample source loaded");
             // transform proportional start time to real start time

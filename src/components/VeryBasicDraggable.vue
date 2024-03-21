@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue';
 
-const pos = ref({ x: 0, y: 0 });
+const props = defineProps<{
+    onPositionChanged: (newPos: { x: number, y: number }) => void;
+    initialPosition?: { x: number, y: number };
+}>();
+
+const pos = ref(props.initialPosition?props.initialPosition:{ x: 0, y: 0 });
 const dragging = ref(false);
 const dragEl = ref<HTMLElement | null>(null);
 
-const props = defineProps<{
-    onPositionChanged: (newPos: { x: number, y: number }) => void;
-}>();
 
 watch(pos, (newPos) => {
     props.onPositionChanged(newPos);
