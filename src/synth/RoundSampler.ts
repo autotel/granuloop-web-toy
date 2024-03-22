@@ -137,7 +137,7 @@ const getSoundGrain = (
 class Scheduler {
     private currentTimer: false | DamnTimerType = false;
     /** in seconds */
-    frameLength: number = 0.01;
+    frameLength: number = 1/30;
     scheduleStart: (absoluteStartTime: number) => void;
     scheduleStop: (absoluteStopTime: number) => void;
     stop: () => void;
@@ -193,7 +193,7 @@ export const roundSampler = (
     grainRealtimeParams: GrainRealtimeParams
 ) => {
     const output = audioContext.createGain();
-    output.gain.value = 0.5;
+    output.gain.value = 0.1;
     let latestGrainStartTime = 0;
     let currentSampleSource = new SampleSource(audioContext, sampleDefinition);
     let currentSampleStartOffsetSeconds = 0;
@@ -266,15 +266,6 @@ export const roundSampler = (
         const newFragmentBuffer = audioContext.createBuffer(1, waveValues.length, sampleRate);
         newFragmentBuffer.copyToChannel(waveValues, 0);
         currentFragmentBuffer = newFragmentBuffer;
-
-        // currentBufferSourceNode?.stop();
-
-        // currentBufferSourceNode = audioContext.createBufferSource();
-        // currentBufferSourceNode.buffer = currentFragmentBuffer;
-        // currentBufferSourceNode.loop = true;
-        // currentBufferSourceNode.connect(output);
-        // currentBufferSourceNode.start();
-
     }
 
     const getWaveShape = (pointsCount: number): Float32Array => {

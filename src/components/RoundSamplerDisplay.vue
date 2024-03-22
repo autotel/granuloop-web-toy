@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { usePoseStore } from '@/stores/pose';
+import { useViewportStore } from '@/stores/viewportStore';
 import { throttle } from 'lodash';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useAudioContextStore } from '../stores/audioContextStore';
 import { roundSampler } from '../synth/RoundSampler';
-import VeryBasicDraggable from './VeryBasicDraggable.vue';
-import { useViewportStore } from '@/stores/viewportStore';
 const sizeParameters = ref({
     rad: 0,
     vMult: 0,
@@ -65,14 +64,18 @@ const waveD = computed(() => {
     return '';
 });
 const drawWaveInCanvas = () => {
-    
-    if(!canvasElement.value) return;
+
+    if (!canvasElement.value) return;
     const ctx = canvasElement.value.getContext('2d');
     ctx?.clearRect(0, 0, canvasElement.value.width, canvasElement.value.height);
     if (!ctx) return;
     const { radius, center } = circleParameters;
     const vMult = radius * 0.2;
-    ctx.strokeStyle = 'red';
+    ctx.fillStyle = '#222222';
+    // ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
+    
+    ctx.strokeStyle = 'white';
+    ctx.lineWidth = 3;
     ctx.beginPath();
     if (waveForm.value) {
         const steps = waveForm.value.length;
@@ -82,7 +85,7 @@ const drawWaveInCanvas = () => {
             const radValX = radius + waveForm.value[i] * vMult;
             const x = Math.cos(rxi) * radValX + center.x;
             const y = Math.sin(rxi) * radValX + center.y;
-            if(i === 0) {
+            if (i === 0) {
                 ctx.beginPath();
                 ctx.moveTo(x, y);
             } else {
@@ -91,20 +94,12 @@ const drawWaveInCanvas = () => {
         }
     }
     ctx.stroke();
+    ctx.fill();
 };
 watch(waveForm, drawWaveInCanvas);
 
-const updateWaveForm = () => {
-    myTestSampler.value.updateFragmentBuffer();
-    waveForm.value = myTestSampler.value.getWaveShape(circleParameters.perimeter * 2);
-};
-
-watch(() => params, (newParams) => {
-    updateWaveForm();
-});
 
 audioContextStore.audioContextPromise.then(() => {
-    updateWaveForm();
     myTestSampler.value.output.connect(audioContextStore.audioContext.destination);
     myTestSampler.value.scheduleStart(audioContextStore.audioContext.currentTime);
 });
@@ -136,18 +131,21 @@ const recalc = throttle(() => {
     const portion = ((1 - (angle / Math.PI)) / 2);
     // console.log(portion);
     try {
-        const newSampleOffsetTime = portion * (
-            myTestSampler.value.getDuration()
-        );
+        const newSampleOffsetTime = portion;
+        //  * (
+        //     myTestSampler.value.getDuration()
+        // );
         Object.assign(params, {
             sampleOffsetTime: newSampleOffsetTime,
             sustainTime: durationSecs,
         });
         Object.assign(circleParameters, { radius, perimeter });
-        updateWaveForm();
     } catch (e) {
         // console.error(e);
     }
+
+    myTestSampler.value.updateFragmentBuffer();
+    waveForm.value = myTestSampler.value.getWaveShape(circleParameters.perimeter * 2);
 }, 10);
 
 const armLeftMoved = (newPos: { x: number, y: number }) => {
@@ -228,13 +226,12 @@ const resizeCanvas = () => {
 }
 
 watch(viewport.size, resizeCanvas);
+watch(canvasElement, resizeCanvas);
 
 
 </script>
 <template>
-    <canvas 
-        ref="canvasElement"
-    ></canvas>
+    <canvas ref="canvasElement"></canvas>
     <!-- <svg 
         :width="viewport.size.width" 
         :height="viewport.size.height"
@@ -249,7 +246,7 @@ watch(viewport.size, resizeCanvas);
             <VeryBasicDraggable :onPositionChanged="chestMoved" :initial-position="circleParameters.center" />
             <VeryBasicDraggable :onPositionChanged="armRightMoved" :initial-position="circleParameters.radiusPoint" />
         </template>
-    </svg> -->
+</svg> -->
 </template>
 <style>
 svg {

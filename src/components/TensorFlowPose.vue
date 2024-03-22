@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch, watchEffect } from 'vue';
+import { ref, watch, watchEffect } from 'vue';
 import { usePoseStore } from '../stores/pose';
 import { useVideoSourceStore } from '../stores/videoSource';
 import { useViewportStore } from '../stores/viewportStore';
@@ -68,7 +68,7 @@ const drawFrame = async () => {
         detectorFrame();
     }
 
-    context.strokeStyle = '#00FF00';
+    context.strokeStyle = '#ffcc00';
     context.lineWidth = 2;
     context.clearRect(0, 0, canvasElement.value.width, canvasElement.value.height);
     const initdPoseStore = poseStore.poseEstimator.initialized;
@@ -124,7 +124,7 @@ watch(viewport.resolution, () => {
 
 <style scoped>
 video {
-    opacity: 0.5;
+    /* opacity: 0.5; */
 }
 .container {
     position: absolute;
@@ -135,5 +135,6 @@ canvas {
     position: absolute;
     width:100%;
     height:100%;
+    mix-blend-mode: color-dodge;
 }
 </style>

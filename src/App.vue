@@ -46,6 +46,8 @@ poseStore.poseEstimator.waitInit().then(() => {
     top: 0;
     left: 0;
 }
-
+.viewport canvas, .viewport video {
+    mix-blend-mode:difference;
+}
 
 </style>
