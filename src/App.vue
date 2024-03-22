@@ -45,6 +45,8 @@ poseStore.poseEstimator.waitInit().then(() => {
     height: 100vh;
     top: 0;
     left: 0;
+    /** mirror */
+    transform: scaleX(-1);
 }
 .viewport canvas, .viewport video {
     mix-blend-mode:difference;
