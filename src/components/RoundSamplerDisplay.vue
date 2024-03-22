@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { useAudioContextStore } from '../stores/audioContextStore';
-import { type GrainRealtimeParams, roundSampler, type RoundSampler } from '../synth/RoundSampler';
-import { computed, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue';
-import VeryBasicDraggable from './VeryBasicDraggable.vue';
+import { usePoseStore } from '@/stores/pose';
 import { throttle } from 'lodash';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { useAudioContextStore } from '../stores/audioContextStore';
+import { roundSampler } from '../synth/RoundSampler';
+import VeryBasicDraggable from './VeryBasicDraggable.vue';
 const sizeParameters = ref({
     rad: 0,
     vMult: 0,
@@ -95,7 +96,7 @@ const recalc = throttle(() => {
         Math.pow(center.y - radiusPoint.y, 2)
     );
     const perimeter = Math.PI * 2 * radius;
-    const durationSecs = perimeter / 1000;
+    const durationSecs = perimeter / 10000;
 
     const thirdPointDx = thirdPoint.x - center.x;
     const thirdPointDy = thirdPoint.y - center.y;
@@ -135,6 +136,23 @@ const chestMoved = (newPos: { x: number, y: number }) => {
     circleParameters.center = newPos;
     recalc();
 };
+
+
+const poseStore = usePoseStore();
+setInterval(() => {
+    // console.log(poseStore.points);
+    if(!poseStore.points) return;
+    if(!poseStore.points.neck) return;
+    if(!poseStore.points['left_elbow']) return;
+    if(!poseStore.points['right_elbow']) return;
+    const [neckx,necky] = poseStore.points.neck;
+    const [lelbowx,lelbowy] = poseStore.points['left_elbow'];
+    const [relbowx,relbowy] = poseStore.points['right_elbow'];
+    armLeftMoved({ x: lelbowx, y: lelbowy });
+    armRightMoved({ x: relbowx, y: relbowy });
+    chestMoved({ x: neckx, y: necky });
+},200);
+
 (() => {
 
     const { cx, cy, rad } = sizeParameters.value;
@@ -178,7 +196,7 @@ const fakeArmD = ({ x, y }: { x: number, y: number }) => {
 </script>
 <template>
     <svg width="100vw" height="100vh">
-        <circle :cx="sizeParameters.cx" :cy="sizeParameters.cy" :r="sizeParameters.rad" fill="none"
+        <circle :cx="circleParameters.center.x" :cy="circleParameters.center.y" :r="circleParameters.radius" fill="none"
             stroke-dasharray="2 2" />
         <path v-if="waveForm" :d="waveD" fill="none" />
         <path :d="fakeArmD(circleParameters.radiusPoint)" />

@@ -1,3 +1,4 @@
+
 type DamnTimerType = ReturnType<typeof setTimeout> | ReturnType<typeof setTimeout> | number;
 
 export interface SampleFileDefinition {
@@ -136,7 +137,7 @@ const getSoundGrain = (
 class Scheduler {
     private currentTimer: false | DamnTimerType = false;
     /** in seconds */
-    frameLength: number = 0.1;
+    frameLength: number = 0.01;
     scheduleStart: (absoluteStartTime: number) => void;
     scheduleStop: (absoluteStopTime: number) => void;
     stop: () => void;
@@ -185,8 +186,6 @@ class Scheduler {
         }
     }
 }
-
-
 
 export const roundSampler = (
     audioContext: AudioContext,
