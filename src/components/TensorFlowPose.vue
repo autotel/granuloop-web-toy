@@ -1,29 +1,14 @@
 <script setup lang="ts">
-import * as poseDetection from '@tensorflow-models/pose-detection';
-import { ref, watch, watchEffect } from 'vue';
+import { onMounted, ref, watch, watchEffect } from 'vue';
 import { usePoseStore } from '../stores/pose';
 import { useVideoSourceStore } from '../stores/videoSource';
-import  '@tensorflow/tfjs-backend-webgl';
-import * as tf from '@tensorflow/tfjs-core';
 
-console.log("waiting init");
-await tf.ready();
-console.log("waiting detector");
-const detector = await poseDetection.createDetector(
-    poseDetection.SupportedModels.MoveNet,
-    {
-        runtime: 'tfjs',
-        enableSmoothing: true,
-
-    });
-console.log("detector ready");
 const poseStore = usePoseStore();
 const videoSourceStore = useVideoSourceStore();
 let videoElement = ref<HTMLVideoElement | false>(false);
 let poseDetectionIsRunning = ref(false);
 let canvasElement = ref<HTMLCanvasElement | false>(false);
 let context: CanvasRenderingContext2D | null = null;
-let drawnPoints = ref(0);
 let requestedAnimationFrame: number | null = null;
 let requestedVideoFrame: number | null = null;
 
@@ -63,74 +48,18 @@ if (!videoFrameCallbackSupported) {
     console.log('requestVideoFrameCallback not supported, using requestAnimationFrame instead.');
 }
 const detectorFrame = async () => {
-    if (!videoElement.value) return;
-    if (!videoSourceStore.stream) return;
+
     const video = videoElement.value;
-    if (!video) return;
-    const estimationConfig = {
-        flipHorizontal: false,
-        maxPoses: 1,
-        scoreThreshold: 0.9,
-
-    }
-
-    if (video.readyState < 2) {
-        await new Promise((resolve) => {
-            console.log('waiting for video to load');
-            video.onloadeddata = () => {
-                resolve(video);
-            };
-        });
-    }
-
-    poseStore.timestamp(new Date().getTime());
-    const poses = await detector.estimatePoses(video, estimationConfig);
-
-    poseStore.reset();
-
-    for (const pose of poses) {
-        drawnPoints.value = pose.keypoints.length;
-        const keypoints = pose.keypoints;
-        for (const keypoint of keypoints) {
-            if (!keypoint.score) continue;
-            // context.fillStyle = `#FF0000${ratioToHex16(keypoint.score)}`;
-            if (!isNaN(keypoint.x) && !isNaN(keypoint.y) && keypoint.name) {
-                // skip kp outside screen
-                if (keypoint.x < 0 || keypoint.x > video.videoWidth) continue;
-                if (keypoint.y < 0 || keypoint.y > video.videoHeight) continue;
-                if (keypoint.score < 0.3) continue;
-
-                // context.fillText(`${keypoint.name}`, keypoint.x + 10, keypoint.y + 5);
-                // context.beginPath();
-                // context.arc(keypoint.x, keypoint.y, 5, 0, Math.PI * 2);
-                // context.fill();
-                poseStore.keypoint(keypoint.name, keypoint.x, keypoint.y);
-            }
-        }
-    }
-    const neck = poseStore.getLine('left_shoulder', 'right_shoulder');
-    if (neck) {
-        const avgx = (neck[0] + neck[2]) / 2;
-        const avgy = (neck[1] + neck[3]) / 2;
-        poseStore.keypoint('neck', avgx, avgy);
-    }
-    const headCenter = poseStore.getLine('left_ear', 'right_ear');
-    if (headCenter) {
-        const avgx = (headCenter[0] + headCenter[2]) / 2;
-        const avgy = (headCenter[1] + headCenter[3]) / 2;
-        poseStore.keypoint('head_center', avgx, avgy);
-    }
-
-
-
-    if (poseDetectionIsRunning.value) {
+    if (video) {
         if (videoFrameCallbackSupported) {
             requestedVideoFrame = video.requestVideoFrameCallback(detectorFrame);
         } /* else {
             will happen on frame function
         } */
-    } else {
-        console.log('stopped running');
+    }
+    const poseEstimator = poseStore.poseEstimator.initialized;
+    if (poseEstimator) {
+        poseEstimator.detectorFrame();
     }
 
 }
@@ -150,23 +79,30 @@ const drawFrame = async () => {
     context.strokeStyle = '#00FF00';
     context.lineWidth = 2;
     context.clearRect(0, 0, canvasElement.value.width, canvasElement.value.height);
-    const segments = poseStore.getLines();
-    for (const segment of segments) {
-        context.beginPath();
-        context.moveTo(segment[0], segment[1]);
-        context.lineTo(segment[2], segment[3]);
-        context.stroke();
+    const initdPoseStore = poseStore.poseEstimator.initialized;
+    if (initdPoseStore) {
+        const segments = initdPoseStore.getLines();
+        for (const segment of segments) {
+            context.beginPath();
+            context.moveTo(segment[0], segment[1]);
+            context.lineTo(segment[2], segment[3]);
+            context.stroke();
+        }
     }
     if (poseDetectionIsRunning.value) {
         requestedAnimationFrame = requestAnimationFrame(drawFrame);
     }
 }
-
-watchEffect(() => {
+const videoElementChanged = () => {
+    console.log("videoElementChanged");
     if (videoElement.value) {
         videoElement.value.addEventListener('loadedmetadata', resizeCanvas);
+        poseStore.poseEstimator.init(videoElement.value);
+    }else{
+        console.warn("videoElement is "+videoElement.value);
     }
-});
+}
+watch(videoElement, videoElementChanged);
 
 watchEffect(() => {
     if (canvasElement.value) {
@@ -174,15 +110,19 @@ watchEffect(() => {
     }
 });
 
+onMounted(() => {
+    videoElementChanged();
+});
+
 </script>
 <template>
     <div>
+        <div class="viewport">
+            <video ref="videoElement" autoplay></video>
+            <canvas ref="canvasElement"></canvas>
+            <!-- {{ poseDetectionIsRunning }}, {{ drawnPoints }} -->
+        </div>
         <template v-if="videoSourceStore.stream">
-            <div class="viewport">
-                <video ref="videoElement" autoplay></video>
-                <canvas ref="canvasElement"></canvas>
-                <!-- {{ poseDetectionIsRunning }}, {{ drawnPoints }} -->
-            </div>
         </template>
     </div>
 </template>
