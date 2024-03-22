@@ -174,22 +174,27 @@ export function createPoseEstimator() {
         timestamp(now);
     }
 
-    // get all the keypoints or false if either is unavailable
+    // get all the keypoints or false if either is unavailable, in order of the input
     const getPoints = (
         ...p: KeypointName[]
     ): number[] | false => {
         const testArr = p;
         const { keypoints } = lastPose;
-        const expectedLength = p.length * 2;
-        const points: number[] = [];
+        let missing = p.length;
+        const points: number[][] = [];
         for (let i = 0; i < keypoints.length; i++) {
             const name = keypoints[i].name;
             if (!name) continue;
-            if (testArr.includes(keypoints[i].name as KeypointName)) {
-                points.push(keypoints[i].x, keypoints[i].y);
+            const indexOf = testArr.indexOf(name as KeypointName);
+            if (indexOf !== -1) {
+                if(points[indexOf]){
+                    throw new Error(`Duplicate keypoint name: ${name}`);
+                }
+                points[indexOf] = [keypoints[i].x, keypoints[i].y];
+                missing--;
             }
-            if (points.length === expectedLength) {
-                return points;
+            if(missing === 0){
+                return points.flat();
             }
         }
         return false;

@@ -25,13 +25,27 @@ poseStore.poseEstimator.waitInit().then(() => {
 </script>
 
 <template>
-    <TensorFlowPose />
 
+    <div>
+        <div class="viewport">
+            <TensorFlowPose />
+            <RoundSamplerDisplay />
+        </div>
+    </div>
+        <HeadsUp />
     <template v-if="waitingPoseEstimator">
         Loading pose estimator {{ animString }}
     </template>
-    <RoundSamplerDisplay />
-    <HeadsUp />
 </template>
 
-<style scoped></style>
+<style scoped>
+.viewport {
+    position: fixed;
+    width: 100vw;
+    height: 100vh;
+    top: 0;
+    left: 0;
+}
+
+
+</style>

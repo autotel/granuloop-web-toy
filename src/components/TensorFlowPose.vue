@@ -1,25 +1,18 @@
 <script setup lang="ts">
-import { onMounted, ref, watch, watchEffect } from 'vue';
+import { computed, onMounted, ref, watch, watchEffect } from 'vue';
 import { usePoseStore } from '../stores/pose';
 import { useVideoSourceStore } from '../stores/videoSource';
+import { useViewportStore } from '../stores/viewportStore';
 
 const poseStore = usePoseStore();
 const videoSourceStore = useVideoSourceStore();
-let videoElement = ref<HTMLVideoElement | false>(false);
+let videoElement = ref<HTMLVideoElement | undefined>(undefined);
 let poseDetectionIsRunning = ref(false);
 let canvasElement = ref<HTMLCanvasElement | false>(false);
 let context: CanvasRenderingContext2D | null = null;
 let requestedAnimationFrame: number | null = null;
 let requestedVideoFrame: number | null = null;
-
-const resizeCanvas = () => {
-    if (!canvasElement.value) return;
-    const video = videoElement.value;
-    if (!video) return;
-    canvasElement.value.width = video.videoWidth;
-    canvasElement.value.height = video.videoHeight;
-}
-
+const viewport = useViewportStore();
 
 watchEffect(async () => {
     if (!videoSourceStore.stream) return;
@@ -64,7 +57,6 @@ const detectorFrame = async () => {
 
 }
 const drawFrame = async () => {
-    if (!videoSourceStore.stream) return;
     if (!canvasElement.value) return;
 
     if (!context) {
@@ -96,56 +88,52 @@ const drawFrame = async () => {
 const videoElementChanged = () => {
     console.log("videoElementChanged");
     if (videoElement.value) {
-        videoElement.value.addEventListener('loadedmetadata', resizeCanvas);
         poseStore.poseEstimator.init(videoElement.value);
-    }else{
-        console.warn("videoElement is "+videoElement.value);
+    }
+    if (videoElement.value?.videoWidth && videoElement.value?.videoHeight) {
+        // viewport.resolution.width = videoElement.value.videoWidth;
+        // viewport.resolution.height = videoElement.value.videoHeight;
+        console.log("videoElement.value.videoWidth", videoElement.value.videoWidth);
+    } else {
+        console.warn("videoElement is " + videoElement.value);
     }
 }
 watch(videoElement, videoElementChanged);
+watch([
+    () => videoElement.value ? videoElement.value.videoWidth : 0,
+    () => videoElement.value ? videoElement.value.videoHeight : 0,
+], videoElementChanged);
 
-watchEffect(() => {
-    if (canvasElement.value) {
-        resizeCanvas();
-    }
+
+
+
+watch(viewport.resolution, () => {
+    if (!canvasElement.value) return;
+    canvasElement.value.width = viewport.resolution.width;
+    canvasElement.value.height = viewport.resolution.height;
 });
 
-onMounted(() => {
-    videoElementChanged();
-});
 
 </script>
 <template>
-    <div>
-        <div class="viewport">
-            <video ref="videoElement" autoplay></video>
-            <canvas ref="canvasElement"></canvas>
-            <!-- {{ poseDetectionIsRunning }}, {{ drawnPoints }} -->
-        </div>
-        <template v-if="videoSourceStore.stream">
-        </template>
+    <div :style="viewport.sizeStyle" class="container">
+        <video  ref="videoElement" autoplay></video>
+        <canvas  ref="canvasElement"></canvas>
     </div>
 </template>
 
 <style scoped>
-.viewport {
-    position: fixed;
-    width: 100vw;
-    height: 100vh;
-    top: 0;
-    left: 0;
-}
-
-.viewport * {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-}
-
-.viewport video {
+video {
     opacity: 0.5;
+}
+.container {
+    position: absolute;
+    border: solid 1px red;
+}
+video,
+canvas {
+    position: absolute;
+    width:100%;
+    height:100%;
 }
 </style>

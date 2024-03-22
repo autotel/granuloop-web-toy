@@ -2,9 +2,12 @@ import { defineStore } from "pinia";
 import { ref } from "vue";
 
 
-
+export const videoSize = {
+    width: 640,
+    height: 480
+}
 export const useVideoSourceStore = defineStore("videoSource", () => {
-
+    
     const stream = ref<MediaStream | false>(false);
     const startCapture = async () => {
         try {
@@ -12,8 +15,7 @@ export const useVideoSourceStore = defineStore("videoSource", () => {
                 await navigator.mediaDevices.getUserMedia({
                     video: {
                         facingMode: 'user',
-                        width: 480,
-                        height: 480,
+                        ...videoSize
 
                     },
                     audio: false,

@@ -5,6 +5,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useAudioContextStore } from '../stores/audioContextStore';
 import { roundSampler } from '../synth/RoundSampler';
 import VeryBasicDraggable from './VeryBasicDraggable.vue';
+import { useViewportStore } from '@/stores/viewportStore';
 const sizeParameters = ref({
     rad: 0,
     vMult: 0,
@@ -21,7 +22,7 @@ const sizeParameters = ref({
     sizeParameters.value = { rad, vMult, cx, cy };
 
 })()
-
+const viewport = useViewportStore();
 const audioContextStore = useAudioContextStore();
 
 const params = {
@@ -42,6 +43,7 @@ const myTestSampler = ref(
     roundSampler(audioContextStore.audioContext, sampleDefinition, params)
 );
 
+let canvasElement = ref<HTMLCanvasElement | false>(false);
 const waveForm = ref<Float32Array | null>(null);
 const waveD = computed(() => {
     const { radius, center } = circleParameters;
@@ -62,6 +64,35 @@ const waveD = computed(() => {
     }
     return '';
 });
+const drawWaveInCanvas = () => {
+    
+    if(!canvasElement.value) return;
+    const ctx = canvasElement.value.getContext('2d');
+    ctx?.clearRect(0, 0, canvasElement.value.width, canvasElement.value.height);
+    if (!ctx) return;
+    const { radius, center } = circleParameters;
+    const vMult = radius * 0.2;
+    ctx.strokeStyle = 'red';
+    ctx.beginPath();
+    if (waveForm.value) {
+        const steps = waveForm.value.length;
+        const radialIncrement = Math.PI * 2 / steps;
+        for (let i = 0; i < steps; i++) {
+            const rxi = radialIncrement * i;
+            const radValX = radius + waveForm.value[i] * vMult;
+            const x = Math.cos(rxi) * radValX + center.x;
+            const y = Math.sin(rxi) * radValX + center.y;
+            if(i === 0) {
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+            }
+        }
+    }
+    ctx.stroke();
+};
+watch(waveForm, drawWaveInCanvas);
 
 const updateWaveForm = () => {
     myTestSampler.value.updateFragmentBuffer();
@@ -106,7 +137,7 @@ const recalc = throttle(() => {
     // console.log(portion);
     try {
         const newSampleOffsetTime = portion * (
-            myTestSampler.value.getDuration() 
+            myTestSampler.value.getDuration()
         );
         Object.assign(params, {
             sampleOffsetTime: newSampleOffsetTime,
@@ -140,21 +171,16 @@ const chestMoved = (newPos: { x: number, y: number }) => {
 
 const poseStore = usePoseStore();
 setInterval(() => {
-    // console.log(poseStore.points);
-    if(!poseStore.points) return;
-    if(!poseStore.points.neck) return;
-    if(!poseStore.points['left_elbow']) return;
-    if(!poseStore.points['right_elbow']) return;
-    const [neckx,necky] = poseStore.points.neck;
-    const [lelbowx,lelbowy] = poseStore.points['left_elbow'];
-    const [relbowx,relbowy] = poseStore.points['right_elbow'];
-    armLeftMoved({ x: lelbowx, y: lelbowy });
-    armRightMoved({ x: relbowx, y: relbowy });
-    chestMoved({ x: neckx, y: necky });
-},200);
+    const points = poseStore.getTriangle('left_wrist', 'neck', 'right_wrist');
+    if (points) {
+        const [lelbowx, lelbowy, neckx, necky, relbowx, relbowy] = points;
+        armLeftMoved({ x: lelbowx, y: lelbowy });
+        armRightMoved({ x: relbowx, y: relbowy });
+        chestMoved({ x: neckx, y: necky });
+    }
+}, 200);
 
 (() => {
-
     const { cx, cy, rad } = sizeParameters.value;
     armLeftMoved({ x: cx - rad, y: cy });
     armRightMoved({ x: cx + rad, y: cy });
@@ -193,18 +219,37 @@ const fakeArmD = ({ x, y }: { x: number, y: number }) => {
     const d = `M${center.x},${center.y} L${elbow.x},${elbow.y} L${x},${y}`;
     return d;
 }
+
+
+const resizeCanvas = () => {
+    if (!canvasElement.value) return;
+    canvasElement.value.width = viewport.size.width;
+    canvasElement.value.height = viewport.size.height;
+}
+
+watch(viewport.size, resizeCanvas);
+
+
 </script>
 <template>
-    <svg width="100vw" height="100vh">
+    <canvas 
+        ref="canvasElement"
+    ></canvas>
+    <!-- <svg 
+        :width="viewport.size.width" 
+        :height="viewport.size.height"
+    >
         <circle :cx="circleParameters.center.x" :cy="circleParameters.center.y" :r="circleParameters.radius" fill="none"
             stroke-dasharray="2 2" />
         <path v-if="waveForm" :d="waveD" fill="none" />
-        <path :d="fakeArmD(circleParameters.radiusPoint)" />
-        <path :d="fakeArmD(circleParameters.thirdPoint)" />
-        <VeryBasicDraggable :onPositionChanged="armLeftMoved" :initial-position="circleParameters.thirdPoint" />
-        <VeryBasicDraggable :onPositionChanged="chestMoved" :initial-position="circleParameters.center" />
-        <VeryBasicDraggable :onPositionChanged="armRightMoved" :initial-position="circleParameters.radiusPoint" />
-    </svg>
+        <template v-if="!poseStore.poseEstimator.initialized">
+            <path :d="fakeArmD(circleParameters.radiusPoint)" />
+            <path :d="fakeArmD(circleParameters.thirdPoint)" />
+            <VeryBasicDraggable :onPositionChanged="armLeftMoved" :initial-position="circleParameters.thirdPoint" />
+            <VeryBasicDraggable :onPositionChanged="chestMoved" :initial-position="circleParameters.center" />
+            <VeryBasicDraggable :onPositionChanged="armRightMoved" :initial-position="circleParameters.radiusPoint" />
+        </template>
+    </svg> -->
 </template>
 <style>
 svg {
